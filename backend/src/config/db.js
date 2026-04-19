@@ -14,10 +14,10 @@ const pool = mysql.createPool({
 // Test connection (Using async/await style for ES Modules)
 try {
     const connection = await pool.getConnection();
-    console.log('✅ Connected to MySQL Database!');
+    console.log(' Connected to MySQL Database!');
     connection.release();
 } catch (err) {
-    console.error('❌ Database connection failed:', err.message);
+    console.error(' Database connection failed:', err.message);
 }
 
 export default pool;
