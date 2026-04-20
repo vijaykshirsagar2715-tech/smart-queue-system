@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import axios from "axios"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,65 +16,111 @@ interface UserDashboardProps {
   onLogout: () => void
 }
 
-const pastVisits = [
-  { id: "A-098", department: "General", date: "Apr 15, 2026", status: "completed" },
-  { id: "B-045", department: "Billing", date: "Apr 10, 2026", status: "completed" },
-  { id: "A-087", department: "General", date: "Apr 5, 2026", status: "cancelled" },
-  { id: "E-012", department: "Emergency", date: "Mar 28, 2026", status: "completed" },
-]
-
 export function UserDashboard({ onLogout }: UserDashboardProps) {
+  // 🟢 1. STATE MANAGEMENT
   const [selectedDepartment, setSelectedDepartment] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
   
-  // Mock data
-  const currentToken = "A-102"
-  const peopleAhead = 7
-  const estimatedTime = 15
-  const progress = 65
+  // These states handle the live UI updates
+  const [activeToken, setActiveToken] = useState<string | null>(null)
+  const [peopleAhead, setPeopleAhead] = useState(0)
+  const [estimatedTime, setEstimatedTime] = useState(0)
+  const [progress, setProgress] = useState(0)
+
+  // 🔵 2. SYNC LOGIC (Runs on Load & Every 5 Seconds)
+  const updateQueueInfo = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/queue/status')
+      const fullQueue = res.data
+      
+      // If we have a token stored, find its position in the queue
+      const currentStoredToken = activeToken || localStorage.getItem("activeToken")
+      
+      if (currentStoredToken) {
+        const waitingList = fullQueue.filter((t: any) => t.status === 'waiting')
+        const myIndex = waitingList.findIndex((t: any) => t.token_number === currentStoredToken)
+        
+        if (myIndex !== -1) {
+          setPeopleAhead(myIndex)
+          setEstimatedTime(myIndex * 5)
+          setProgress(Math.max(15, 100 - (myIndex * 10))) 
+        } else {
+          // Check if token is being served (status 'called')
+          const isCalled = fullQueue.find((t: any) => t.token_number === currentStoredToken && t.status === 'called')
+          if (isCalled) {
+            setPeopleAhead(0)
+            setEstimatedTime(0)
+            setProgress(100)
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Sync Error:", err)
+    }
+  }
+
+  useEffect(() => {
+    // Restore session from localStorage if user refreshes
+    const savedToken = localStorage.getItem("activeToken")
+    const savedDept = localStorage.getItem("activeDept")
+    if (savedToken) setActiveToken(savedToken)
+    if (savedDept) setSelectedDepartment(savedDept)
+    
+    updateQueueInfo()
+    const interval = setInterval(updateQueueInfo, 5000)
+    return () => clearInterval(interval)
+  }, [activeToken])
+
+  // 🔴 3. BOOKING LOGIC
+  const handleJoinQueue = async () => {
+    setLoading(true)
+    try {
+      const res = await axios.post('http://localhost:5000/api/queue/book', {
+        department: selectedDepartment
+      })
+
+      // 🛠️ DATA-FIX: Check multiple possible key names from backend
+      const newToken = res.data?.token_number || res.data?.tokenNumber || res.data?.data?.token_number
+
+      if (newToken) {
+        setActiveToken(newToken)
+        localStorage.setItem("activeToken", newToken)
+        localStorage.setItem("activeDept", selectedDepartment)
+        setDialogOpen(false)
+      } else {
+        alert("Success, but could not read Token ID. Check Backend JSON keys!")
+      }
+    } catch (err) {
+      alert("Backend Error! Ensure your server and database are running.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#f8fafc]">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
+      <header className="sticky top-0 z-50 bg-white border-b border-zinc-200">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <span className="text-primary font-bold text-lg">Q</span>
-            </div>
-            <span className="text-xl font-bold text-foreground">SmartQ</span>
+            <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-lg">Q</div>
+            <span className="text-xl font-bold text-zinc-900">SmartQ</span>
           </div>
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center gap-2 hover:bg-accent">
+              <Button variant="ghost" className="gap-2 hover:bg-zinc-100">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="bg-primary/10 text-primary text-sm">JD</AvatarFallback>
+                  <AvatarFallback className="bg-indigo-100 text-indigo-700">JD</AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:inline text-foreground">John Doe</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <span className="hidden sm:inline font-medium">John Doe</span>
+                <ChevronDown className="h-4 w-4 text-zinc-500" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <History className="mr-2 h-4 w-4" />
-                History
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
+              <DropdownMenuItem onClick={onLogout} className="text-red-600 cursor-pointer">
+                <LogOut className="mr-2 h-4 w-4" /> Logout
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -82,168 +129,113 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 space-y-8">
+        
         {/* Active Token Card */}
-        <Card className="bg-card border-border shadow-lg overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-emerald/5 pointer-events-none" />
-          <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground flex items-center gap-2">
-              <Ticket className="h-4 w-4" />
-              Your Active Token
+        <Card className="border-none shadow-xl shadow-indigo-500/5 bg-white overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-full h-1 bg-indigo-600" />
+          <CardHeader>
+            <CardDescription className="flex items-center gap-2 text-zinc-500 uppercase tracking-wider font-semibold text-xs">
+              <Ticket className="h-4 w-4 text-indigo-600" /> 
+              Current Queue Status
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-col lg:flex-row items-center gap-8">
-              {/* Token Display */}
-              <div className="flex-1 flex flex-col items-center lg:items-start">
-                <div className="text-6xl sm:text-7xl font-bold text-primary tracking-tight">
-                  {currentToken}
-                </div>
-                <p className="text-muted-foreground mt-2">Department: General</p>
+          <CardContent className="pt-2">
+            <div className="flex flex-col lg:flex-row items-center gap-12">
+              
+              {/* Token Number - 🛠️ FIXED: Never shows "undefined" */}
+              <div className="flex-1 text-center lg:text-left">
+                <h1 className="text-7xl sm:text-8xl font-black text-indigo-600 tracking-tighter">
+                  {activeToken ? activeToken : "---"}
+                </h1>
+                <Badge variant="secondary" className="mt-4 px-4 py-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-50 border-none capitalize">
+                   {selectedDepartment ? `Dept: ${selectedDepartment}` : "No Active Request"}
+                </Badge>
               </div>
               
-              {/* Circular Progress */}
-              <div className="relative">
-                <svg className="w-32 h-32 sm:w-40 sm:h-40 -rotate-90" viewBox="0 0 100 100">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="42"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    className="text-muted/30"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="42"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={`${progress * 2.64} 264`}
-                    className="text-primary transition-all duration-500"
+              {/* Animated Progress Circle */}
+              <div className="relative h-44 w-44">
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="8" />
+                  <circle 
+                    cx="50" cy="50" r="42" fill="none" stroke="#4f46e5" strokeWidth="8" 
+                    strokeLinecap="round" strokeDasharray={`${progress * 2.64} 264`} 
+                    className="transition-all duration-1000 ease-in-out" 
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl sm:text-3xl font-bold text-foreground">{progress}%</span>
-                  <span className="text-xs text-muted-foreground">Wait Progress</span>
+                  <span className="text-4xl font-black text-zinc-900">{activeToken ? progress : 0}%</span>
+                  <span className="text-[10px] uppercase font-bold text-zinc-400">Wait Progress</span>
                 </div>
               </div>
-              
-              {/* Stats */}
-              <div className="flex lg:flex-col gap-4 lg:gap-6">
-                <Card className="bg-muted/50 border-border/50 min-w-[140px]">
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">{peopleAhead}</p>
-                      <p className="text-xs text-muted-foreground">People Ahead</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-muted/50 border-border/50 min-w-[140px]">
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-emerald/10 flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-emerald" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">{estimatedTime}</p>
-                      <p className="text-xs text-muted-foreground">Est. Time (Mins)</p>
-                    </div>
-                  </CardContent>
-                </Card>
+
+              {/* Real-time Stats Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 w-full lg:w-48">
+                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-zinc-900">{activeToken ? peopleAhead : "0"}</p>
+                    <p className="text-[10px] uppercase font-bold text-zinc-400">People Ahead</p>
+                  </div>
+                </div>
+                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-zinc-900">{activeToken ? estimatedTime : "0"}</p>
+                    <p className="text-[10px] uppercase font-bold text-zinc-400">Est. Mins</p>
+                  </div>
+                </div>
               </div>
+
             </div>
           </CardContent>
         </Card>
 
-        {/* Get New Token */}
-        <div className="flex justify-center">
+        {/* Action Button */}
+        <div className="flex justify-center pt-4">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-primary/20 transition-all duration-300 gap-2">
-                <Plus className="h-5 w-5" />
-                Get New Token
+              <Button 
+                disabled={!!activeToken} 
+                size="lg" 
+                className="h-14 px-10 rounded-full bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/25 transition-all active:scale-95"
+              >
+                <Plus className="mr-2 h-6 w-6" /> 
+                {activeToken ? "You are in the queue" : "Generate New Token"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-[425px] rounded-3xl">
               <DialogHeader>
-                <DialogTitle>Request a New Token</DialogTitle>
-                <DialogDescription>
-                  Select a department to join the queue
-                </DialogDescription>
+                <DialogTitle className="text-2xl font-bold">New Booking</DialogTitle>
+                <DialogDescription>Select the department you wish to visit.</DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-6 py-6">
                 <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-12 border-zinc-200">
                     <SelectValue placeholder="Select Department" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="billing">Billing</SelectItem>
-                    <SelectItem value="emergency">Emergency</SelectItem>
-                    <SelectItem value="pharmacy">Pharmacy</SelectItem>
-                    <SelectItem value="lab">Laboratory</SelectItem>
+                    <SelectItem value="general">General Consultation</SelectItem>
+                    <SelectItem value="billing">Billing & Payments</SelectItem>
+                    <SelectItem value="emergency">Emergency Services</SelectItem>
+                    <SelectItem value="lab">Laboratory / Testing</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button 
-                  className="w-full bg-primary hover:bg-primary/90" 
-                  disabled={!selectedDepartment}
-                  onClick={() => setDialogOpen(false)}
+                  className="w-full h-12 bg-indigo-600 text-lg font-semibold rounded-xl" 
+                  disabled={!selectedDepartment || loading} 
+                  onClick={handleJoinQueue}
                 >
-                  Join Queue
+                  {loading ? "Generating..." : "Confirm & Get Token"}
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        {/* Past Visits */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2">
-              <History className="h-5 w-5" />
-              My Past Visits
-            </CardTitle>
-            <CardDescription>Your recent queue history</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">Token ID</TableHead>
-                  <TableHead className="text-muted-foreground">Department</TableHead>
-                  <TableHead className="text-muted-foreground">Date</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pastVisits.map((visit) => (
-                  <TableRow key={visit.id} className="border-border hover:bg-muted/50">
-                    <TableCell className="font-medium text-foreground">{visit.id}</TableCell>
-                    <TableCell className="text-foreground">{visit.department}</TableCell>
-                    <TableCell className="text-muted-foreground">{visit.date}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge
-                        variant={visit.status === "completed" ? "default" : "secondary"}
-                        className={
-                          visit.status === "completed"
-                            ? "bg-emerald/10 text-emerald hover:bg-emerald/20"
-                            : "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                        }
-                      >
-                        {visit.status === "completed" ? "Completed" : "Cancelled"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
       </main>
     </div>
   )

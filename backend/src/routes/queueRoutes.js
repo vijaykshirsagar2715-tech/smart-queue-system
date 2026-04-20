@@ -3,10 +3,10 @@ import { generateToken, getQueueStatus } from '../controllers/queueController.js
 
 const router = express.Router();
 
-// Route to book a new token
+// This is what the frontend will call
 router.post('/book', generateToken);
 
-// Route to see the live queue
+// This is what the Admin Dashboard calls
 router.get('/status', getQueueStatus);
 
 export default router;
