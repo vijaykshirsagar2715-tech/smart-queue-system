@@ -5,25 +5,25 @@ export const generateToken = async (req, res) => {
     const { userId, department } = req.body;
 
     try {
-        // 1. Calculate the current position (Count everyone with 'waiting' status)
-        const [rows] = await pool.query(
-            'SELECT COUNT(*) as count FROM tokens WHERE status = "waiting"'
-        );
-        const position = rows[0].count + 1;
+        // 1. Get the Smart Wait Time & Position directly from the service
+        // We pass 'department' so it counts people in the right line
+        const waitData = await calculateWaitTime(department);
+        
+        const position = waitData.peopleAhead + 1;
+        const waitTimeMinutes = waitData.estimatedWaitTime;
 
-        // 2. Calculate the Smart Wait Time using our service
-        const waitTimeMinutes = calculateWaitTime(position);
-
-        // 3. Generate a random Token Number
+        // 2. Generate a random Token Number
         const tokenNum = `TKN-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        // 4. Insert into the database
+        // 3. Insert into the database
+        // NOTE: Ensure your table has a column named 'position_in_queue' 
+        // or just use 'status' to track them.
         const [result] = await pool.query(
-            'INSERT INTO tokens (token_number, user_id, department, position_in_queue) VALUES (?, ?, ?, ?)',
-            [tokenNum, userId, department, position]
+            'INSERT INTO tokens (token_number, user_id, department, status) VALUES (?, ?, ?, "waiting")',
+            [tokenNum, userId, department]
         );
 
-        // 5. Send the full response back to Postman
+        // 4. Send the full response back to Postman
         res.status(201).json({
             message: "Token generated successfully!",
             tokenData: {
@@ -35,14 +35,16 @@ export const generateToken = async (req, res) => {
             }
         });
     } catch (error) {
+        console.error("Error generating token:", error);
         res.status(500).json({ error: error.message });
     }
 };
 
 export const getQueueStatus = async (req, res) => {
     try {
+        // We select more details so the frontend can show a nice list
         const [tokens] = await pool.query(
-            'SELECT token_number, position_in_queue, status FROM tokens WHERE status = "waiting" ORDER BY created_at ASC'
+            'SELECT token_number, department, status, created_at FROM tokens WHERE status = "waiting" OR status = "called" ORDER BY created_at ASC'
         );
         res.json(tokens);
     } catch (error) {

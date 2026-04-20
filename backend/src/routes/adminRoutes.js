@@ -3,10 +3,10 @@ import { callNextToken, completeService } from '../controllers/adminController.j
 
 const router = express.Router();
 
-// This handles: POST http://localhost:5000/api/admin/next
+// Moves someone from 'waiting' -> 'called'
 router.post('/next', callNextToken);
 
-// This handles: POST http://localhost:5000/api/admin/complete
+// Moves someone from 'called' -> 'completed'
 router.post('/complete', completeService);
 
 export default router;
