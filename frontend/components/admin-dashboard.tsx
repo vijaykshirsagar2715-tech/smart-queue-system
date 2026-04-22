@@ -9,21 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch" // Ensure you have this in your UI components
+import { Switch } from "@/components/ui/switch"
 import { 
-  Users, 
-  BarChart3, 
-  LayoutDashboard, 
-  UserCog, 
-  Settings, 
-  Bell, 
-  LogOut, 
-  Search,
-  PhoneForwarded,
-  ChevronRight,
-  ToggleLeft,
-  Clock,
-  CheckCircle2
+  Users, BarChart3, LayoutDashboard, UserCog, Settings, 
+  Bell, LogOut, Search, ChevronRight, Clock, 
+  CheckCircle2, Activity, Zap, ShieldCheck, Trash2,
+  TrendingUp, Monitor
 } from "lucide-react"
 
 interface AdminDashboardProps {
@@ -31,17 +22,12 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
-  
-  // --- STATE MANAGEMENT ---
   const [activeTab, setActiveTab] = useState("Dashboard")
   const [searchTerm, setSearchTerm] = useState("")
   const [queue, setQueue] = useState<any[]>([])
   const [currentToken, setCurrentToken] = useState("---")
   const [loading, setLoading] = useState(false)
-  
-  // 🛠️ Settings Logic State
   const [notifications, setNotifications] = useState(true)
-  const [autoComplete, setAutoComplete] = useState(false)
 
   const menuItems = [
     { title: "Dashboard", icon: LayoutDashboard },
@@ -59,7 +45,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
       const beingServed = res.data.find((t: any) => t.status === 'called')
       setCurrentToken(beingServed ? beingServed.token_number : "---")
     } catch (err) {
-      console.error("Error connecting to backend:", err)
+      console.error("Backend offline")
     }
   }
 
@@ -69,16 +55,24 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
     return () => clearInterval(interval)
   }, [])
 
-  // 🛠️ REAL ANALYTICS CALCULATIONS
   const analytics = useMemo(() => {
     const waiting = queue.filter(t => t.status === 'waiting').length
     const completed = queue.filter(t => t.status === 'completed' || t.status === 'called').length
-    return {
-      waiting,
-      completed,
-      avgWait: waiting * 5, // Simple logic: 5 mins per person
-    }
+    return { waiting, completed, avgWait: waiting * 5 }
   }, [queue])
+
+  const handleCallNext = async () => {
+    setLoading(true)
+    try {
+      await axios.post('http://localhost:5000/api/admin/next')
+      if (notifications) { new Audio('/ding.mp3').play().catch(() => {}); }
+      await fetchLiveQueue() 
+    } catch (err) {
+      alert("Queue is empty")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredQueue = queue.filter(
     (item) =>
@@ -86,53 +80,41 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
       item.department?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const handleCallNext = async () => {
-    setLoading(true)
-    try {
-      await axios.post('http://localhost:5000/api/admin/next')
-      if (notifications) {
-        const audio = new Audio('/ding.mp3'); // If you have a sound file
-        audio.play().catch(() => {}); 
-      }
-      await fetchLiveQueue() 
-    } catch (err) {
-      alert("No users waiting in the queue!")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <SidebarProvider>
-      <div className="dark min-h-screen flex w-full bg-background">
-        {/* --- SIDEBAR --- */}
-        <Sidebar className="border-r border-sidebar-border">
-          <SidebarHeader className="p-4">
-            <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-lg bg-primary/20 flex items-center justify-center">
-                <span className="text-primary font-bold text-lg">Q</span>
+      <div className="dark min-h-screen flex w-full bg-[#09090b] text-slate-200 selection:bg-indigo-500/30">
+        
+        <Sidebar className="border-r border-white/5 bg-[#09090b]/50 backdrop-blur-xl">
+          <SidebarHeader className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <Zap className="h-5 w-5 text-white fill-white" />
               </div>
               <div>
-                <span className="text-lg font-bold text-foreground">SmartQ</span>
-                <p className="text-xs text-muted-foreground">Admin Portal</p>
+                <span className="text-xl font-black tracking-tight text-white">SmartQ</span>
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Admin Control</p>
               </div>
             </div>
           </SidebarHeader>
-          <Separator />
-          <SidebarContent>
+          
+          <SidebarContent className="px-3">
             <SidebarGroup>
-              <SidebarGroupLabel>Menu</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-slate-500 text-[10px] font-bold uppercase px-4 mb-2">Main Terminal</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {menuItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
+                    <SidebarMenuItem key={item.title} className="mb-1">
                       <SidebarMenuButton 
                         isActive={activeTab === item.title}
                         onClick={() => setActiveTab(item.title)}
-                        className={activeTab === item.title ? "bg-primary/10 text-primary" : ""}
+                        className={`h-11 rounded-lg px-4 transition-all duration-200 ${
+                          activeTab === item.title 
+                          ? "bg-indigo-600/10 text-indigo-400 border border-indigo-500/20" 
+                          : "hover:bg-white/5 text-slate-400"
+                        }`}
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className={`h-4 w-4 ${activeTab === item.title ? "text-indigo-400" : ""}`} />
+                        <span className="font-semibold text-sm">{item.title}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
@@ -140,169 +122,243 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
-          <SidebarFooter className="p-4">
-            <Button variant="ghost" onClick={onLogout} className="w-full justify-start text-red-400 hover:bg-red-400/10">
-              <LogOut className="mr-2 h-4 w-4" /> Logout
+
+          <SidebarFooter className="p-6">
+            <Button variant="ghost" onClick={onLogout} className="w-full justify-start text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl group transition-all">
+              <LogOut className="mr-3 h-4 w-4 group-hover:-translate-x-1 transition-transform" /> 
+              <span className="font-bold text-sm">Logout</span>
             </Button>
           </SidebarFooter>
         </Sidebar>
 
-        {/* --- MAIN CONTENT AREA --- */}
-        <SidebarInset className="flex-1">
-          <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b px-6 h-16 flex items-center gap-4">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-6" />
-            <h1 className="text-lg font-semibold">{activeTab} Hub</h1>
+        <SidebarInset className="flex-1 bg-transparent">
+          <header className="sticky top-0 z-40 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 px-8 h-20 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <SidebarTrigger className="text-slate-400 hover:text-white" />
+              <Separator orientation="vertical" className="h-6 bg-white/10" />
+              <h1 className="text-lg font-bold tracking-tight text-white">{activeTab}</h1>
+            </div>
+            <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Live Connection: Optimal</span>
+            </div>
           </header>
 
-          <main className="p-6">
+          <main className="p-8 max-w-[1600px] mx-auto w-full">
             
-            {/* VIEW: DASHBOARD (Live Stats + Call Next) */}
+            {/* --- DASHBOARD VIEW --- */}
             {activeTab === "Dashboard" && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <Card className="bg-primary/5 border-primary/20">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Waiting</p>
-                        <p className="text-3xl font-bold text-primary">{analytics.waiting}</p>
-                      </div>
-                      <Users className="h-8 w-8 text-primary opacity-50" />
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-emerald-500/5 border-emerald-500/20">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Completed</p>
-                        <p className="text-3xl font-bold text-emerald-500">{analytics.completed}</p>
-                      </div>
-                      <CheckCircle2 className="h-8 w-8 text-emerald-500 opacity-50" />
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-orange-500/5 border-orange-500/20">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Est. Wait Time</p>
-                        <p className="text-3xl font-bold text-orange-500">{analytics.avgWait}m</p>
-                      </div>
-                      <Clock className="h-8 w-8 text-orange-500 opacity-50" />
-                    </CardContent>
-                  </Card>
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[
+                    { label: "Waiting", val: analytics.waiting, icon: Users, color: "text-indigo-400", bg: "bg-indigo-400/10" },
+                    { label: "Completed", val: analytics.completed, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10" },
+                    { label: "Est. Wait Time", val: `${analytics.avgWait}m`, icon: Clock, color: "text-orange-400", bg: "bg-orange-400/10" }
+                  ].map((stat, i) => (
+                    <Card key={i} className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden hover:border-white/10 transition-all">
+                      <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{stat.label}</p>
+                          <p className={`text-4xl font-black ${stat.color}`}>{stat.val}</p>
+                        </div>
+                        <div className={`h-14 w-14 rounded-2xl ${stat.bg} flex items-center justify-center`}>
+                          <stat.icon className={`h-7 w-7 ${stat.color}`} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
-                <Card className="border-emerald/20 bg-emerald/5 shadow-lg shadow-emerald-500/5">
-                  <CardHeader><CardTitle className="text-emerald-400 flex items-center gap-2"><PhoneForwarded className="h-5 w-5" /> Current Turn</CardTitle></CardHeader>
-                  <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                    <div>
-                      <p className="text-sm text-emerald-400/70">Now Serving</p>
-                      <div className="text-7xl font-bold text-emerald-400 tracking-tighter">{currentToken}</div>
+                <Card className="border-0 bg-gradient-to-br from-indigo-600/20 via-transparent to-transparent rounded-[2.5rem] overflow-hidden shadow-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-indigo-400 text-xs font-black uppercase tracking-[0.3em] flex items-center gap-3">
+                        <Activity className="h-4 w-4" /> Real-Time Controller
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-10 flex flex-col lg:flex-row items-center justify-between gap-10">
+                    <div className="text-center lg:text-left">
+                      <p className="text-sm font-bold text-slate-500 uppercase mb-2">Currently Serving</p>
+                      <div className="text-7xl font-black text-white tracking-tighter drop-shadow-[0_0_50px_rgba(255,255,255,0.1)]">
+                        {currentToken}
+                      </div>
                     </div>
-                    <Button size="lg" onClick={handleCallNext} disabled={loading} className="bg-emerald-600 hover:bg-emerald-500 h-16 px-8 text-lg font-bold min-w-[240px]">
-                      {loading ? "Calling..." : "Call Next Token"} <ChevronRight className="ml-2" />
-                    </Button>
+                    
+                    <div className="flex flex-col gap-4 w-full lg:w-auto">
+                        <Button 
+                            onClick={handleCallNext} 
+                            disabled={loading} 
+                            className="bg-indigo-600 hover:bg-indigo-500 h-24 px-12 rounded-3xl text-2xl font-black shadow-2xl shadow-indigo-500/20 group transition-all active:scale-95"
+                        >
+                            {loading ? "PROCESSING..." : "CALL NEXT"} 
+                            <ChevronRight className="ml-4 h-8 w-8 group-hover:translate-x-2 transition-transform" />
+                        </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
             )}
 
-            {/* VIEW: QUEUE MANAGEMENT */}
+            {/* --- QUEUE MANAGEMENT VIEW --- */}
             {activeTab === "Queue Management" && (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Detailed Queue List</CardTitle>
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Filter by token or dept..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+              <Card className="bg-white/[0.02] border-white/5 rounded-3xl animate-in fade-in duration-500">
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-8">
+                  <div>
+                    <CardTitle className="text-2xl font-black text-white">Queue Registry</CardTitle>
+                    <CardDescription className="text-slate-500 font-medium">Live logs of every generated token.</CardDescription>
+                  </div>
+                  <div className="relative w-full md:w-80">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <Input 
+                        placeholder="Search ID or Dept..." 
+                        value={searchTerm} 
+                        onChange={(e) => setSearchTerm(e.target.value)} 
+                        className="pl-11 h-12 bg-white/5 border-white/5 rounded-xl" 
+                    />
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Token</TableHead><TableHead>Department</TableHead><TableHead>Arrival Time</TableHead><TableHead className="text-right">Status</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {filteredQueue.map((item) => (
-                        <TableRow key={item.id} className="hover:bg-muted/50">
-                          <TableCell className="font-mono font-bold text-primary">{item.token_number}</TableCell>
-                          <TableCell className="capitalize">{item.department}</TableCell>
-                          <TableCell>{new Date(item.created_at).toLocaleTimeString()}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant={item.status === 'called' ? 'default' : 'secondary'}>{item.status}</Badge>
-                          </TableCell>
+                <CardContent className="px-8 pb-8">
+                  <div className="rounded-2xl border border-white/5 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-white/5">
+                        <TableRow className="border-white/5 hover:bg-transparent">
+                          <TableHead className="text-[10px] font-black uppercase text-slate-500">Token ID</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase text-slate-500">Department</TableHead>
+                          <TableHead className="text-[10px] font-black uppercase text-slate-500 text-right">Status</TableHead>
                         </TableRow>
-                      ))}
-                      {filteredQueue.length === 0 && (
-                        <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground italic">No tokens found in queue.</TableCell></TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredQueue.map((item) => (
+                          <TableRow key={item.id} className="border-white/5 hover:bg-white/[0.02] transition-colors">
+                            <TableCell className="font-mono font-black text-indigo-400 py-5">{item.token_number}</TableCell>
+                            <TableCell className="capitalize font-bold text-slate-300">{item.department}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge className={`rounded-lg px-3 py-1 border-0 font-bold ${
+                                item.status === 'called' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'
+                              }`}>
+                                {item.status.toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* VIEW: ANALYTICS (Driven by Real Data) */}
+            {/* --- ANALYTICS VIEW --- */}
             {activeTab === "Analytics" && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card><CardContent className="p-6"> <p className="text-muted-foreground">Today's Traffic</p> <p className="text-3xl font-bold">{queue.length}</p> </CardContent></Card>
-                  <Card><CardContent className="p-6"> <p className="text-muted-foreground">Completion Rate</p> <p className="text-3xl font-bold">{queue.length > 0 ? Math.round((analytics.completed / queue.length) * 100) : 0}%</p> </CardContent></Card>
-                  <Card><CardContent className="p-6"> <p className="text-muted-foreground">System Health</p> <p className="text-3xl font-bold text-emerald-500">Optimal</p> </CardContent></Card>
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="bg-white/[0.02] border-white/5 p-8 rounded-3xl">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="font-bold text-xl">Peak Hours</h3>
+                      <TrendingUp className="text-emerald-500" />
+                    </div>
+                    <div className="h-48 flex items-end gap-2 px-2">
+                       {[40, 70, 45, 90, 65, 30, 85].map((h, i) => (
+                         <div key={i} className="flex-1 bg-indigo-500/20 hover:bg-indigo-500/40 rounded-t-lg transition-all" style={{ height: `${h}%` }} />
+                       ))}
+                    </div>
+                    <div className="flex justify-between mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      <span>9AM</span><span>12PM</span><span>3PM</span><span>6PM</span>
+                    </div>
+                  </Card>
+                  <Card className="bg-white/[0.02] border-white/5 p-8 rounded-3xl">
+                    <h3 className="font-bold text-xl mb-6">Department Distribution</h3>
+                    <div className="space-y-4">
+                      {['Billing', 'Support', 'Pharmacy'].map((dept, i) => (
+                        <div key={dept} className="space-y-2">
+                          <div className="flex justify-between text-sm font-bold">
+                            <span>{dept}</span>
+                            <span>{85 - (i * 20)}%</span>
+                          </div>
+                          <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-600" style={{ width: `${85 - (i * 20)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
                 </div>
-                <Card className="p-10 text-center border-dashed border-2">
-                   <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                   <h3 className="text-lg font-semibold">Queue Traffic Analysis</h3>
-                   <p className="text-muted-foreground">Real-time graph visualization is active. Monitoring {queue.length} tokens.</p>
-                </Card>
               </div>
             )}
 
-            {/* VIEW: STAFF (Personalized) */}
+            {/* --- STAFF VIEW --- */}
             {activeTab === "Staff" && (
-              <Card>
+              <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden animate-in fade-in duration-500">
+                <CardHeader className="p-8 border-b border-white/5">
+                  <CardTitle className="text-2xl font-black">Staff Directory</CardTitle>
+                  <CardDescription>Manage active terminal operators.</CardDescription>
+                </CardHeader>
                 <Table>
-                  <TableHeader><TableRow><TableHead>Staff Name</TableHead><TableHead>Role</TableHead><TableHead>Department</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                  <TableHeader className="bg-white/5">
+                    <TableRow className="border-white/5"><TableHead>Operator</TableHead><TableHead>Terminal</TableHead><TableHead className="text-right">Status</TableHead></TableRow>
+                  </TableHeader>
                   <TableBody>
-                    <TableRow><TableCell>Main Admin</TableCell><TableCell>Super Admin</TableCell><TableCell>All</TableCell><TableCell><Badge className="bg-green-500">Online</Badge></TableCell></TableRow>
-                    <TableRow><TableCell>Dept. Operator</TableCell><TableCell>Staff</TableCell><TableCell>Billing</TableCell><TableCell><Badge variant="outline">Standby</Badge></TableCell></TableRow>
+                    {[
+                      { name: "Vijay Kshirsagar", term: "Counter 01", status: "Online" },
+                      { name: "Siddharth Gawari", term: "Counter 02", status: "Break" },
+                      { name: "Hemant Patil", term: "Front Desk", status: "Offline" }
+                    ].map((staff) => (
+                      <TableRow key={staff.name} className="border-white/5">
+                        <TableCell className="font-bold py-4">{staff.name}</TableCell>
+                        <TableCell className="text-slate-400 font-medium">{staff.term}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge className={staff.status === "Online" ? "bg-emerald-500/20 text-emerald-500 border-0" : "bg-white/5 text-slate-500 border-0"}>
+                            {staff.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </Card>
             )}
 
-            {/* VIEW: SETTINGS (Functional) */}
-            {activeTab === "Settings" && (
-              <div className="max-w-2xl space-y-4">
-                <Card className="p-6 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-lg">Sound Notifications</p>
-                    <p className="text-sm text-muted-foreground">Play alert when 'Call Next' is clicked</p>
-                  </div>
-                  <Switch checked={notifications} onCheckedChange={setNotifications} />
-                </Card>
-                <Card className="p-6 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-lg">Auto-Reset Queue</p>
-                    <p className="text-sm text-muted-foreground">Clear all tokens at the end of the day</p>
-                  </div>
-                  <Switch checked={autoComplete} onCheckedChange={setAutoComplete} />
-                </Card>
-                <Button variant="outline" className="w-full h-12 text-red-500 border-red-500/20 hover:bg-red-500/10">
-                   Clear Database History
-                </Button>
+            {/* --- NOTIFICATIONS VIEW --- */}
+            {activeTab === "Notifications" && (
+              <div className="max-w-2xl space-y-4 animate-in fade-in duration-500">
+                {[
+                  { title: "Audio Chime", desc: "Play 'ding.mp3' when calling next token", state: notifications, set: setNotifications },
+                  { title: "Push Alerts", desc: "Notify staff when waiting queue > 10", state: true },
+                  { title: "Customer SMS", desc: "Send SMS when customer's turn is near", state: false }
+                ].map((item, i) => (
+                  <Card key={i} className="bg-white/[0.02] border-white/5 p-6 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-white">{item.title}</h4>
+                      <p className="text-xs text-slate-500">{item.desc}</p>
+                    </div>
+                    <Switch checked={item.state} onCheckedChange={item.set} />
+                  </Card>
+                ))}
               </div>
             )}
 
-            {/* VIEW: NOTIFICATIONS */}
-            {activeTab === "Notifications" && (
-              <div className="space-y-4">
-                {queue.filter(t => t.status === 'waiting').slice(0, 5).map((t, i) => (
-                  <Card key={i} className="p-4 flex items-center gap-4 border-l-4 border-l-primary">
-                    <Bell className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="font-medium">New Token Alert</p>
-                      <p className="text-sm text-muted-foreground">Token {t.token_number} joined the {t.department} queue.</p>
+            {/* --- SETTINGS VIEW --- */}
+            {activeTab === "Settings" && (
+              <div className="max-w-2xl space-y-6 animate-in fade-in duration-500">
+                <Card className="bg-white/[0.02] border-white/5 p-8 rounded-3xl">
+                  <h3 className="font-bold text-xl mb-4 flex items-center gap-2"><Monitor className="h-5 w-5 text-indigo-500" /> Terminal Config</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Terminal Name</label>
+                      <Input className="bg-white/5 border-white/5" defaultValue="Main-Terminal-Alpha" />
                     </div>
-                  </Card>
-                ))}
-                {queue.length === 0 && <p className="text-center text-muted-foreground">No new notifications.</p>}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Auto-Refresh (sec)</label>
+                      <Input className="bg-white/5 border-white/5" defaultValue="5" />
+                    </div>
+                  </div>
+                  <Button className="mt-6 bg-indigo-600 hover:bg-indigo-700 w-full rounded-xl font-bold">Update System</Button>
+                </Card>
+
+                <Card className="bg-red-500/5 border-red-500/10 p-8 rounded-3xl">
+                  <h3 className="font-bold text-xl text-red-500 mb-2 flex items-center gap-2"><Trash2 className="h-5 w-5" /> Danger Zone</h3>
+                  <p className="text-sm text-slate-500 mb-4">Resetting the daily queue will clear all history for today.</p>
+                  <Button variant="destructive" className="rounded-xl font-bold px-8">Reset Daily Queue</Button>
+                </Card>
               </div>
             )}
 
