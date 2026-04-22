@@ -21,6 +21,20 @@ export function AuthView({ onLogin, onAdminLogin }: AuthViewProps) {
   const [name, setName] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
 
+  // 🛠️ FIX: Create a handler to set the local storage expected by the SQMS dashboard before firing onLogin
+  const handleAuthSubmit = () => {
+    if (!email) {
+      alert("Please enter an email address to continue.");
+      return;
+    }
+    
+    // Set the exact keys that user-dashboard.tsx is looking for
+    localStorage.setItem("user", email);
+    localStorage.setItem("token", "simulated-jwt-token"); // Replace with real token when integrating backend
+    
+    onLogin();
+  }
+
   return (
     <div className="dark min-h-screen bg-background relative flex items-center justify-center p-4 overflow-hidden">
       {/* Background gradients */}
@@ -100,7 +114,7 @@ export function AuthView({ onLogin, onAdminLogin }: AuthViewProps) {
               </div>
               
               <Button
-                onClick={onLogin}
+                onClick={handleAuthSubmit} // 🛠️ Changed from onLogin to handleAuthSubmit
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group"
               >
                 Sign In
@@ -169,7 +183,7 @@ export function AuthView({ onLogin, onAdminLogin }: AuthViewProps) {
               </FieldGroup>
               
               <Button
-                onClick={onLogin}
+                onClick={handleAuthSubmit} // 🛠️ Changed from onLogin to handleAuthSubmit
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 group"
               >
                 Create Account

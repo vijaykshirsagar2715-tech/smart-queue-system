@@ -19,6 +19,13 @@ export default function Home() {
   }
 
   const handleLogout = () => {
+    // 🛠️ The Fix: Clear all stored data so the next user starts fresh
+    localStorage.removeItem("user")
+    localStorage.removeItem("token")
+    localStorage.removeItem("activeToken")
+    localStorage.removeItem("activeDept")
+    
+    // Switch view back to login screen
     setCurrentView("auth")
   }
 

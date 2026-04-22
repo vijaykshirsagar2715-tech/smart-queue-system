@@ -9,98 +9,116 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Ticket, Clock, Users, Plus, LogOut, User, Settings, History, ChevronDown } from "lucide-react"
+import { Ticket, Clock, Users, Plus, LogOut, ChevronDown } from "lucide-react"
 
 interface UserDashboardProps {
   onLogout: () => void
 }
 
 export function UserDashboard({ onLogout }: UserDashboardProps) {
-  // 🟢 1. STATE MANAGEMENT
+  // 🛠️ Dynamic User Info
+  const [userName, setUserName] = useState("User")
+  
   const [selectedDepartment, setSelectedDepartment] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   
-  // These states handle the live UI updates
   const [activeToken, setActiveToken] = useState<string | null>(null)
   const [peopleAhead, setPeopleAhead] = useState(0)
   const [estimatedTime, setEstimatedTime] = useState(0)
   const [progress, setProgress] = useState(0)
 
-  // 🔵 2. SYNC LOGIC (Runs on Load & Every 5 Seconds)
+  // 🛡️ SECURITY & PERSONALIZATION
+  useEffect(() => {
+    const userSession = localStorage.getItem("user") || localStorage.getItem("token");
+    
+    if (!userSession) {
+      alert("Unauthorized! Please login first.");
+      onLogout();
+    } else {
+      // Extract name from email (e.g., "shubham@gmail.com" -> "Shubham")
+      const namePart = userSession.split('@')[0];
+      setUserName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
+    }
+  }, [onLogout]);
+
+  // 🛠️ DATA RESTORATION: Check for active tokens on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem("activeToken")
+    const savedDept = localStorage.getItem("activeDept")
+    
+    if (savedToken && savedToken !== "undefined") {
+      setActiveToken(savedToken)
+    }
+    if (savedDept) setSelectedDepartment(savedDept)
+  }, [])
+
   const updateQueueInfo = async () => {
+    const currentToken = activeToken || localStorage.getItem("activeToken")
+    if (!currentToken || currentToken === "undefined") return
+
     try {
-      const res = await axios.get('http://localhost:5000/api/queue/status')
+      const res = await axios.get('http://localhost:5000/api/queue/status?email=${userEmail}')
       const fullQueue = res.data
       
-      // If we have a token stored, find its position in the queue
-      const currentStoredToken = activeToken || localStorage.getItem("activeToken")
+      const waitingList = fullQueue.filter((t: any) => t.status === 'waiting')
+      const myIndex = waitingList.findIndex((t: any) => t.token_number === currentToken)
       
-      if (currentStoredToken) {
-        const waitingList = fullQueue.filter((t: any) => t.status === 'waiting')
-        const myIndex = waitingList.findIndex((t: any) => t.token_number === currentStoredToken)
-        
-        if (myIndex !== -1) {
-          setPeopleAhead(myIndex)
-          setEstimatedTime(myIndex * 5)
-          setProgress(Math.max(15, 100 - (myIndex * 10))) 
-        } else {
-          // Check if token is being served (status 'called')
-          const isCalled = fullQueue.find((t: any) => t.token_number === currentStoredToken && t.status === 'called')
-          if (isCalled) {
-            setPeopleAhead(0)
-            setEstimatedTime(0)
-            setProgress(100)
-          }
+      if (myIndex !== -1) {
+        setPeopleAhead(myIndex)
+        setEstimatedTime(myIndex * 5)
+        setProgress(Math.max(15, 100 - (myIndex * 10))) 
+      } else {
+        const isCalled = fullQueue.find((t: any) => t.token_number === currentToken && t.status === 'called')
+        if (isCalled) {
+          setPeopleAhead(0)
+          setEstimatedTime(0)
+          setProgress(100)
         }
       }
     } catch (err) {
-      console.error("Sync Error:", err)
+      console.error("Connection to backend failed during sync.")
     }
   }
 
   useEffect(() => {
-    // Restore session from localStorage if user refreshes
-    const savedToken = localStorage.getItem("activeToken")
-    const savedDept = localStorage.getItem("activeDept")
-    if (savedToken) setActiveToken(savedToken)
-    if (savedDept) setSelectedDepartment(savedDept)
-    
     updateQueueInfo()
     const interval = setInterval(updateQueueInfo, 5000)
     return () => clearInterval(interval)
   }, [activeToken])
 
-  // 🔴 3. BOOKING LOGIC
   const handleJoinQueue = async () => {
+    if (!selectedDepartment) return alert("Please select a department")
+    
     setLoading(true)
     try {
       const res = await axios.post('http://localhost:5000/api/queue/book', {
         department: selectedDepartment
       })
 
-      // 🛠️ DATA-FIX: Check multiple possible key names from backend
-      const newToken = res.data?.token_number || res.data?.tokenNumber || res.data?.data?.token_number
+      const data = res.data.tokenData || res.data; 
+      const newToken = data.token_number || data.tokenNumber || data.token || data.t_number || data.id?.toString();
 
       if (newToken) {
-        setActiveToken(newToken)
-        localStorage.setItem("activeToken", newToken)
-        localStorage.setItem("activeDept", selectedDepartment)
-        setDialogOpen(false)
+        setActiveToken(newToken);
+        localStorage.setItem("activeToken", newToken);
+        localStorage.setItem("activeDept", selectedDepartment);
+        setDialogOpen(false);
       } else {
-        alert("Success, but could not read Token ID. Check Backend JSON keys!")
+        alert("Server responded, but the token information was empty.");
       }
-    } catch (err) {
-      alert("Backend Error! Ensure your server and database are running.")
+    } catch (err: any) {
+      alert("Backend Error: " + (err.response?.data?.message || "Server offline"));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
+  const displayToken = (activeToken && activeToken !== "undefined") ? activeToken : "---"
+  const initials = userName.substring(0, 2).toUpperCase();
+
   return (
     <div className="min-h-screen bg-[#f8fafc]">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-zinc-200">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -112,9 +130,9 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="gap-2 hover:bg-zinc-100">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-indigo-100 text-indigo-700">JD</AvatarFallback>
+                  <AvatarFallback className="bg-indigo-100 text-indigo-700">{initials}</AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:inline font-medium">John Doe</span>
+                <span className="hidden sm:inline font-medium">{userName}</span>
                 <ChevronDown className="h-4 w-4 text-zinc-500" />
               </Button>
             </DropdownMenuTrigger>
@@ -127,10 +145,7 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8 space-y-8">
-        
-        {/* Active Token Card */}
         <Card className="border-none shadow-xl shadow-indigo-500/5 bg-white overflow-hidden relative">
           <div className="absolute top-0 left-0 w-full h-1 bg-indigo-600" />
           <CardHeader>
@@ -141,18 +156,15 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
           </CardHeader>
           <CardContent className="pt-2">
             <div className="flex flex-col lg:flex-row items-center gap-12">
-              
-              {/* Token Number - 🛠️ FIXED: Never shows "undefined" */}
               <div className="flex-1 text-center lg:text-left">
                 <h1 className="text-7xl sm:text-8xl font-black text-indigo-600 tracking-tighter">
-                  {activeToken ? activeToken : "---"}
+                  {displayToken}
                 </h1>
-                <Badge variant="secondary" className="mt-4 px-4 py-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-50 border-none capitalize">
-                   {selectedDepartment ? `Dept: ${selectedDepartment}` : "No Active Request"}
+                <Badge variant="secondary" className="mt-4 px-4 py-1 text-sm bg-indigo-50 text-indigo-700 border-none capitalize">
+                   {activeToken ? `Dept: ${selectedDepartment}` : "No Active Request"}
                 </Badge>
               </div>
               
-              {/* Animated Progress Circle */}
               <div className="relative h-44 w-44">
                 <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="8" />
@@ -168,7 +180,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
                 </div>
               </div>
 
-              {/* Real-time Stats Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 w-full lg:w-48">
                 <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-4">
                   <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center">
@@ -189,22 +200,20 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
                   </div>
                 </div>
               </div>
-
             </div>
           </CardContent>
         </Card>
 
-        {/* Action Button */}
         <div className="flex justify-center pt-4">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button 
-                disabled={!!activeToken} 
+                disabled={!!activeToken && activeToken !== "undefined"} 
                 size="lg" 
                 className="h-14 px-10 rounded-full bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/25 transition-all active:scale-95"
               >
                 <Plus className="mr-2 h-6 w-6" /> 
-                {activeToken ? "You are in the queue" : "Generate New Token"}
+                {activeToken ? "Already in Queue" : "Generate New Token"}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl">
@@ -235,7 +244,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
             </DialogContent>
           </Dialog>
         </div>
-
       </main>
     </div>
   )
