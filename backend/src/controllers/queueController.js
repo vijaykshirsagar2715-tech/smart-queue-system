@@ -23,7 +23,7 @@ export const generateToken = async (req, res) => {
         );
 
         // 🛠️ THE FIX: Safety check before emitting the WebSocket!
-        const io = req.app.get('socketio');
+        const io = req.app.get('socket.io');
         if (io) {
             io.emit('queueUpdated');
         } else {
@@ -86,7 +86,7 @@ export const callNextToken = async (req, res) => {
         await pool.query('UPDATE tokens SET status = "called" WHERE token_number = ?', [nextTokenNumber]);
 
         // Step D: Safely update WebSockets so the User Dashboard sees the change instantly
-        const io = req.app.get('socketio');
+        const io = req.app.get('socket.io');
         if (io) {
             io.emit('queueUpdated');
         }

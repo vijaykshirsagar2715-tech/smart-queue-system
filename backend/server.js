@@ -20,7 +20,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // This makes the socket available to your queueController!
-app.set('socketio', io);
+app.set('socket.io', io);
 
 io.on('connection', (socket) => {
     console.log('A user connected to the live queue: ', socket.id);
