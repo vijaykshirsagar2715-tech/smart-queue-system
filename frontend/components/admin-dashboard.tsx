@@ -1,5 +1,6 @@
 "use client"
 
+import { io } from "socket.io-client"
 import { useState, useEffect, useMemo } from "react"
 import axios from "axios"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+// NEW: Imported Select components for the department dropdown
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Users, BarChart3, LayoutDashboard, UserCog, Settings, 
   Bell, LogOut, Search, ChevronRight, Clock, 
@@ -28,6 +31,21 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [currentToken, setCurrentToken] = useState("---")
   const [loading, setLoading] = useState(false)
   const [notifications, setNotifications] = useState(true)
+  
+  // NEW: State to track which department this specific admin is managing
+  const [adminDepartment, setAdminDepartment] = useState("general")
+   
+useEffect(() => {
+    const socket = io("http://localhost:5000");
+    
+    socket.on("queueUpdated", () => {
+      fetchLiveQueue(); // Admin uses fetchLiveQueue
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   const menuItems = [
     { title: "Dashboard", icon: LayoutDashboard },
@@ -42,12 +60,19 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
     try {
       const res = await axios.get('http://localhost:5000/api/queue/status')
       setQueue(res.data)
-      const beingServed = res.data.find((t: any) => t.status === 'called')
+      
+      // LOGIC FIX: Only show the "Currently Serving" token for the active department
+      const beingServed = res.data.find((t: any) => t.status === 'called' && String(t.department) === adminDepartment)
       setCurrentToken(beingServed ? beingServed.token_number : "---")
     } catch (err) {
       console.error("Backend offline")
     }
   }
+
+  // Refetch the queue whenever the admin switches their active department
+  useEffect(() => {
+    fetchLiveQueue()
+  }, [adminDepartment])
 
   useEffect(() => {
     fetchLiveQueue()
@@ -58,17 +83,30 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const analytics = useMemo(() => {
     const waiting = queue.filter(t => t.status === 'waiting').length
     const completed = queue.filter(t => t.status === 'completed' || t.status === 'called').length
-    return { waiting, completed, avgWait: waiting * 5 }
+    
+    // Calculates wait time based on the longest departmental line
+    const deptCounts: Record<string, number> = {}
+    queue.forEach(t => {
+      if (t.status === 'waiting') {
+        deptCounts[t.department] = (deptCounts[t.department] || 0) + 1
+      }
+    })
+    
+    const maxLine = Object.values(deptCounts).length > 0 ? Math.max(...Object.values(deptCounts)) : 0
+    return { waiting, completed, avgWait: maxLine * 5 }
   }, [queue])
 
   const handleCallNext = async () => {
     setLoading(true)
     try {
-      await axios.post('http://localhost:5000/api/admin/next')
+      // LOGIC FIX: Send the currently selected department to the backend
+      await axios.post('http://localhost:5000/api/admin/next', {
+        department: adminDepartment
+      })
       if (notifications) { new Audio('/ding.mp3').play().catch(() => {}); }
       await fetchLiveQueue() 
     } catch (err) {
-      alert("Queue is empty")
+      alert("Queue for this department is empty or backend error")
     } finally {
       setLoading(false)
     }
@@ -76,8 +114,8 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
   const filteredQueue = queue.filter(
     (item) =>
-      item.token_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.department?.toLowerCase().includes(searchTerm.toLowerCase())
+      String(item.token_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(item.department || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -146,7 +184,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
           <main className="p-8 max-w-[1600px] mx-auto w-full">
             
-            {/* --- DASHBOARD VIEW --- */}
             {activeTab === "Dashboard" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -170,10 +207,25 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 </div>
 
                 <Card className="border-0 bg-gradient-to-br from-indigo-600/20 via-transparent to-transparent rounded-[2.5rem] overflow-hidden shadow-2xl">
-                  <CardHeader className="pb-2">
+                  {/* LOGIC FIX: Added the Department Selector directly into the Header of the controller */}
+                  <CardHeader className="pb-2 flex flex-row items-center justify-between">
                     <CardTitle className="text-indigo-400 text-xs font-black uppercase tracking-[0.3em] flex items-center gap-3">
                         <Activity className="h-4 w-4" /> Real-Time Controller
                     </CardTitle>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hidden sm:inline-block">Active Counter:</span>
+                      <Select value={adminDepartment} onValueChange={setAdminDepartment}>
+                        <SelectTrigger className="w-[180px] h-9 bg-white/5 border-white/10 text-xs font-bold rounded-lg text-slate-200">
+                          <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#121212] border-white/10 text-slate-200 rounded-xl">
+                           <SelectItem value="general" className="rounded-xl py-3 px-4">General Consultation</SelectItem>
+                    <SelectItem value="billing" className="rounded-xl py-3 px-4">Billing & Payments</SelectItem>
+                    <SelectItem value="emergency" className="rounded-xl py-3 px-4 text-red-600">Emergency Services</SelectItem>
+                    <SelectItem value="lab" className="rounded-xl py-3 px-4">Laboratory / Testing</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-10 flex flex-col lg:flex-row items-center justify-between gap-10">
                     <div className="text-center lg:text-left">
@@ -198,7 +250,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
             )}
 
-            {/* --- QUEUE MANAGEMENT VIEW --- */}
             {activeTab === "Queue Management" && (
               <Card className="bg-white/[0.02] border-white/5 rounded-3xl animate-in fade-in duration-500">
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-8">
@@ -228,7 +279,7 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       </TableHeader>
                       <TableBody>
                         {filteredQueue.map((item) => (
-                          <TableRow key={item.id} className="border-white/5 hover:bg-white/[0.02] transition-colors">
+                          <TableRow key={item.token_number} className="border-white/5 hover:bg-white/[0.02] transition-colors">
                             <TableCell className="font-mono font-black text-indigo-400 py-5">{item.token_number}</TableCell>
                             <TableCell className="capitalize font-bold text-slate-300">{item.department}</TableCell>
                             <TableCell className="text-right">
@@ -247,7 +298,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </Card>
             )}
 
-            {/* --- ANALYTICS VIEW --- */}
             {activeTab === "Analytics" && (
               <div className="space-y-6 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -285,7 +335,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
             )}
 
-            {/* --- STAFF VIEW --- */}
             {activeTab === "Staff" && (
               <Card className="bg-white/[0.02] border-white/5 rounded-3xl overflow-hidden animate-in fade-in duration-500">
                 <CardHeader className="p-8 border-b border-white/5">
@@ -317,7 +366,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </Card>
             )}
 
-            {/* --- NOTIFICATIONS VIEW --- */}
             {activeTab === "Notifications" && (
               <div className="max-w-2xl space-y-4 animate-in fade-in duration-500">
                 {[
@@ -336,7 +384,6 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
             )}
 
-            {/* --- SETTINGS VIEW --- */}
             {activeTab === "Settings" && (
               <div className="max-w-2xl space-y-6 animate-in fade-in duration-500">
                 <Card className="bg-white/[0.02] border-white/5 p-8 rounded-3xl">

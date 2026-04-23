@@ -1,5 +1,6 @@
 "use client"
 
+import { io } from "socket.io-client"
 import { useState, useEffect } from "react"
 import axios from "axios"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,14 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Ticket, Clock, Users, Plus, LogOut, ChevronDown, Bell, CheckCircle2, Circle } from "lucide-react"
+import { Ticket, Clock, Users, Plus, LogOut, ChevronDown, Bell, CheckCircle2 } from "lucide-react"
 
 interface UserDashboardProps {
   onLogout: () => void
 }
 
 export function UserDashboard({ onLogout }: UserDashboardProps) {
-  // 🛠️ Core Logic State (Unchanged)
   const [userName, setUserName] = useState("User")
   const [selectedDepartment, setSelectedDepartment] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -26,7 +26,18 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
   const [estimatedTime, setEstimatedTime] = useState(0)
   const [progress, setProgress] = useState(0)
 
-  // 🛡️ Logic Implementation (Unchanged)
+useEffect(() => {
+    const socket = io("http://localhost:5000");
+    
+    socket.on("queueUpdated", () => {
+      updateQueueInfo(); // User uses updateQueueInfo
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
   useEffect(() => {
     const userSession = localStorage.getItem("user") || localStorage.getItem("token");
     if (!userSession) {
@@ -50,23 +61,42 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
   const updateQueueInfo = async () => {
     const currentToken = activeToken || localStorage.getItem("activeToken")
     if (!currentToken || currentToken === "undefined") return
+
     try {
       const res = await axios.get(`http://localhost:5000/api/queue/status`)
       const fullQueue = res.data
-      const waitingList = fullQueue.filter((t: any) => t.status === 'waiting')
-      const myIndex = waitingList.findIndex((t: any) => t.token_number === currentToken)
       
-      if (myIndex !== -1) {
-        setPeopleAhead(myIndex)
-        setEstimatedTime(myIndex * 5)
-        setProgress(Math.max(15, 100 - (myIndex * 10))) 
-      } else {
-        const isCalled = fullQueue.find((t: any) => t.token_number === currentToken && t.status === 'called')
-        if (isCalled) {
+      // 1. Find the user's exact token object
+      const myTokenObj = fullQueue.find((t: any) => String(t.token_number) === String(currentToken))
+
+      if (myTokenObj) {
+        // 2. Only count people who are waiting in THIS specific department
+        const myDeptWaitingList = fullQueue.filter(
+          (t: any) => t.status === 'waiting' && String(t.department) === String(myTokenObj.department)
+        )
+
+        // 3. Find their position within their specific line
+        const myIndex = myDeptWaitingList.findIndex((t: any) => String(t.token_number) === String(currentToken))
+
+        if (myIndex !== -1) {
+          setPeopleAhead(myIndex)
+          setEstimatedTime(myIndex * 5)
+          setProgress(Math.max(15, 100 - (myIndex * 10))) 
+        } else if (myTokenObj.status === 'called') {
           setPeopleAhead(0)
           setEstimatedTime(0)
           setProgress(100)
+        } else if (myTokenObj.status === 'completed' || myTokenObj.status === 'skipped') {
+          setActiveToken(null)
+          localStorage.removeItem("activeToken")
+          localStorage.removeItem("activeDept")
+          setPeopleAhead(0)
+          setProgress(0)
         }
+      } else {
+        setActiveToken(null)
+        localStorage.removeItem("activeToken")
+        localStorage.removeItem("activeDept")
       }
     } catch (err) {
       console.error("Connection to backend failed during sync.")
@@ -81,18 +111,28 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
 
   const handleJoinQueue = async () => {
     if (!selectedDepartment) return alert("Please select a department")
+    
+    // Pass user ID
+    const userId = localStorage.getItem("userId");
+    if (!userId) return alert("User session lost. Please log out and back in.");
+
     setLoading(true)
     try {
       const res = await axios.post('http://localhost:5000/api/queue/book', {
-        department: selectedDepartment
+        department: selectedDepartment,
+        user_id: userId
       })
+      
       const data = res.data.tokenData || res.data; 
       const newToken = data.token_number || data.tokenNumber || data.token || data.t_number || data.id?.toString();
+      
       if (newToken) {
-        setActiveToken(newToken);
-        localStorage.setItem("activeToken", newToken);
+        const tokenStr = String(newToken); 
+        setActiveToken(tokenStr);
+        localStorage.setItem("activeToken", tokenStr);
         localStorage.setItem("activeDept", selectedDepartment);
         setDialogOpen(false);
+        updateQueueInfo();
       }
     } catch (err: any) {
       alert("Backend Error: " + (err.response?.data?.message || "Server offline"));
@@ -106,7 +146,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
 
   return (
     <div className="min-h-screen bg-[#FDFDFF] text-slate-900 selection:bg-indigo-100">
-      {/* Background Mesh Gradients for a Modern Feel */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
         <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] rounded-full bg-indigo-50/50 blur-[120px]" />
         <div className="absolute top-[20%] -right-[10%] w-[30%] h-[30%] rounded-full bg-blue-50/50 blur-[100px]" />
@@ -148,13 +187,11 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
 
       <main className="container mx-auto px-4 py-10 max-w-4xl space-y-10">
         
-        {/* Welcome Section */}
         <section className="text-center space-y-2">
             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Hello, {userName}! 👋</h2>
             <p className="text-slate-500 font-medium">Your time is valuable. Track your place in line in real-time.</p>
         </section>
 
-        {/* Main Status Card */}
         <Card className="border-0 shadow-[0_20px_50px_rgba(79,70,229,0.1)] bg-white rounded-[2.5rem] overflow-hidden relative">
           <div className="absolute top-0 right-0 p-8">
              <Badge className={`px-4 py-1.5 rounded-full border-none font-bold tracking-wide ${activeToken ? 'bg-emerald-50 text-emerald-600 animate-pulse' : 'bg-slate-100 text-slate-400'}`}>
@@ -166,7 +203,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               
               <div className="space-y-8">
-                {/* Ticket Component */}
                 <div className="relative group">
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl blur opacity-20 group-hover:opacity-30 transition duration-1000"></div>
                     <div className="relative bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
@@ -183,7 +219,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
                     </div>
                 </div>
 
-                {/* New Visual Stepper */}
                 <div className="flex justify-between items-center px-2">
                     <div className="flex flex-col items-center gap-2">
                         <div className={`h-8 w-8 rounded-full flex items-center justify-center ${activeToken ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300'}`}>
@@ -208,7 +243,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
                 </div>
               </div>
 
-              {/* Progress & Stats Area */}
               <div className="flex flex-col items-center gap-8">
                 <div className="relative h-56 w-56">
                   <svg className="h-full w-full -rotate-90 filter drop-shadow-md" viewBox="0 0 100 100">
@@ -253,7 +287,6 @@ export function UserDashboard({ onLogout }: UserDashboardProps) {
           </CardContent>
         </Card>
 
-        {/* Action Button Section */}
         <div className="flex flex-col items-center gap-6">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
