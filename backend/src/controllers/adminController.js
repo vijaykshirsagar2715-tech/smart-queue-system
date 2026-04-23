@@ -1,24 +1,36 @@
 import pool from '../config/db.js';
 
 // 1. CALL NEXT: Moves the oldest 'waiting' person to 'called'
+// Add this to your backend controller file
 export const callNextToken = async (req, res) => {
     try {
-        const [nextInLine] = await pool.query(
-            'SELECT id, token_number FROM tokens WHERE status = "waiting" ORDER BY created_at ASC LIMIT 1'
-        );
+        // 1. Take whoever is currently "called" and mark them as "completed"
+        await pool.query('UPDATE tokens SET status = "completed" WHERE status = "called"');
 
+        // 2. Find the person who has been "waiting" the longest (the front of the line)
+       // New Query for Segregation
+const [nextInLine] = await pool.query(
+    'SELECT * FROM tokens WHERE status = "waiting" AND department = ? ORDER BY created_at ASC LIMIT 1',
+    [adminDepartment]
+);
+
+        // 3. If the queue is empty, tell the frontend
         if (nextInLine.length === 0) {
-            return res.status(404).json({ message: "No one is waiting in the queue!" });
+            return res.status(404).json({ message: "Queue is empty! No one is waiting." });
         }
 
-        const tokenId = nextInLine[0].id;
-        await pool.query('UPDATE tokens SET status = "called" WHERE id = ?', [tokenId]);
+        // 4. Mark the next person in line as "called"
+        const nextTokenId = nextInLine[0].id;
+        await pool.query('UPDATE tokens SET status = "called" WHERE id = ?', [nextTokenId]);
 
-        res.status(200).json({
-            message: `Now calling ${nextInLine[0].token_number}`,
-            tokenId: tokenId
+        // 5. Send success back to the admin dashboard
+        res.status(200).json({ 
+            message: "Next token called successfully!", 
+            token: nextInLine[0].token_number 
         });
+
     } catch (error) {
+        console.error("Error calling next token:", error);
         res.status(500).json({ error: error.message });
     }
 };
