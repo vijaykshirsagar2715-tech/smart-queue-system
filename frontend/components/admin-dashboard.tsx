@@ -318,7 +318,7 @@ useEffect(() => {
                   <Card className="bg-white/[0.02] border-white/5 p-8 rounded-3xl">
                     <h3 className="font-bold text-xl mb-6">Department Distribution</h3>
                     <div className="space-y-4">
-                      {['Billing', 'Support', 'Pharmacy'].map((dept, i) => (
+                      {['Billing & Payments', 'General Consultation', 'Emergency Services'].map((dept, i) => (
                         <div key={dept} className="space-y-2">
                           <div className="flex justify-between text-sm font-bold">
                             <span>{dept}</span>
